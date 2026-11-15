@@ -30,7 +30,7 @@ namespace Sutki
             Topmost = true;
             Language = XmlLanguage.GetLanguage(english ? "en" : "ru");
             Title = english ? "Heliolune menu" : "Меню «Суток»";
-            FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
+            FontFamily = WindowsUi.TextFont;
             FontSize = 13;
             UseLayoutRounding = true;
             using (var stream = typeof(TrayMenu).Assembly.GetManifestResourceStream("Styles.xaml"))
@@ -51,7 +51,7 @@ namespace Sutki
                 TrayCommand command = commands[i];
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
                 row.Children.Add(new TextBlock { Text = glyphs[i], Width = 24, VerticalAlignment = VerticalAlignment.Center,
-                    FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets") });
+                    FontFamily = WindowsUi.IconFont });
                 row.Children.Add(new TextBlock { Text = labels[i], VerticalAlignment = VerticalAlignment.Center });
                 var button = new AnimatedButton { Style = (Style)Resources["QuietButton"], Height = 34,
                     HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(9, 0, 9, 0), Content = row };
@@ -77,8 +77,7 @@ namespace Sutki
             IntPtr handle = new WindowInteropHelper(this).EnsureHandle();
             SetWindowPos(handle, IntPtr.Zero, point.X, point.Y, 0, 0, 0x15);
             var bounds = System.Windows.Forms.Screen.FromPoint(point).WorkingArea;
-            double scale = GetDpiForWindow(handle) / 96.0;
-            if (scale <= 0) scale = 1;
+            double scale = WindowsUi.DpiScale(handle);
             surface.Measure(new Size(Width, double.PositiveInfinity));
             int width = (int)Math.Ceiling(Width * scale), height = (int)Math.Ceiling(surface.DesiredSize.Height * scale);
             int x = Math.Max(bounds.Left, Math.Min(point.X, bounds.Right - width));
@@ -109,7 +108,6 @@ namespace Sutki
         }
 
         private static Brush Brush(string hex) { return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)); }
-        [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     }

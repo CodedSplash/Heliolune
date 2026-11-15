@@ -69,11 +69,12 @@ namespace Sutki
             WindowStartupLocation = WindowStartupLocation.Manual;
             ShowInTaskbar = false;
             Topmost = true;
-            FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
+            FontFamily = WindowsUi.TextFont;
             FontSize = 13;
             UseLayoutRounding = true;
             using (var stream = typeof(Panel).Assembly.GetManifestResourceStream("Styles.xaml"))
                 Resources = (ResourceDictionary)XamlReader.Load(stream);
+            Resources["IconFont"] = WindowsUi.IconFont;
 
             glance.Children.Add(dial);
             glance.Cursor = Cursors.SizeAll;
@@ -329,7 +330,7 @@ namespace Sutki
                 chosen.TextTrimming = TextTrimming.CharacterEllipsis;
                 Put(info, chosen, 1);
                 var arrow = Label("\uE76C", 10, "Muted", false);
-                arrow.FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
+                arrow.FontFamily = WindowsUi.IconFont;
                 arrow.VerticalAlignment = VerticalAlignment.Center;
                 arrow.Margin = new Thickness(6, 0, 0, 0);
                 Put(info, arrow, 2);
@@ -658,7 +659,7 @@ namespace Sutki
             IntPtr hwnd = new WindowInteropHelper(this).Handle;
             Drawing.Point target = draggedBottom ?? new Drawing.Point(anchor.Left + anchor.Width / 2, anchor.Top);
             Drawing.Rectangle bounds = System.Windows.Forms.Screen.FromPoint(target).WorkingArea;
-            double scale = DpiScale(hwnd);
+            double scale = WindowsUi.DpiScale(hwnd);
             Width = Math.Min(PanelWidth, (bounds.Width - 10) / scale);
             Height = Math.Min(HostHeight, (bounds.Height - 8) / scale);
             ResizeSurface(false);
@@ -667,12 +668,6 @@ namespace Sutki
             int left = Math.Max(bounds.Left, Math.Min(target.X - width / 2, bounds.Right - width));
             int top = Math.Max(bounds.Top, Math.Min(target.Y - height, bounds.Bottom - height));
             MoveTo(new Drawing.Point(left, top));
-        }
-
-        private static double DpiScale(IntPtr hwnd)
-        {
-            uint dpi = GetDpiForWindow(hwnd);
-            return dpi == 0 ? 1 : dpi / 96.0;
         }
 
         private void MoveTo(Drawing.Point point)
@@ -685,7 +680,6 @@ namespace Sutki
         private struct NativeRect { public int Left, Top, Right, Bottom; }
         [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out Drawing.Point point);
-        [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr w, IntPtr after, int x, int y, int width, int height, uint flags);
 
         private Button IconButton(string glyph, Action click)
