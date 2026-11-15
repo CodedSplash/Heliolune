@@ -13,7 +13,7 @@ try {
         /win32manifest:app.manifest /resource:Sutki.ico /resource:Styles.xaml `
         "/reference:$framework\System.Xaml.dll" "/reference:$framework\WPF\PresentationFramework.dll" `
         "/reference:$framework\WPF\PresentationCore.dll" "/reference:$framework\WPF\WindowsBase.dll" `
-        /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/out:$application" AssemblyInfo.cs Model.cs Windows.cs Panel.cs Program.cs SkyDial.cs Celestial.cs SkyBackdrop.cs ControlMotion.cs TrayMenu.cs
+        /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/out:$application" AssemblyInfo.cs LocalizedText.cs Model.cs Windows.cs Panel.cs Program.cs SkyDial.cs Celestial.cs SkyBackdrop.cs ControlMotion.cs TrayMenu.cs
     if ($LASTEXITCODE -ne 0) { throw "C# compilation failed ($LASTEXITCODE)." }
     Copy-Item -LiteralPath 'Sutki.exe.config' -Destination ($application + '.config') -Force
     Write-Output $application

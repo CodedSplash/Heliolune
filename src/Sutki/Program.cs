@@ -21,7 +21,7 @@ namespace Sutki
         private bool appliedFolderMode, busy, pending;
         private DateTime retryAt;
         private bool? shownDark;
-        private string state = "";
+        private LocalizedText state;
         private bool stateError;
 
         [STAThread]
@@ -39,8 +39,14 @@ namespace Sutki
                     if (!startup) activate.Set();
                     return;
                 }
-                try { new Program().Run(activate, startup); }
-                catch (Exception ex) { MessageBox.Show(ex.Message, "Сутки", MessageBoxButton.OK, MessageBoxImage.Error); }
+                var program = new Program();
+                try { program.Run(activate, startup); }
+                catch (Exception ex)
+                {
+                    bool english = program.settings != null && program.settings.English;
+                    MessageBox.Show(default(LocalizedText).WithError(ex).In(english), LocalizedText.AppName.In(english),
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
                 finally { mutex.ReleaseMutex(); }
             }
         }
@@ -52,9 +58,9 @@ namespace Sutki
             catch (Exception error)
             {
                 settings = new Settings();
-                SetState("Не удалось загрузить настройки: " + error.Message, true);
+                SetState(new LocalizedText("Не удалось загрузить настройки: ", "Could not load settings: ").WithError(error), true);
             }
-            using (tray = new Tray())
+            using (tray = new Tray(settings.English))
             {
                 tray.Selected += (anchor, context) =>
                 {
@@ -71,7 +77,7 @@ namespace Sutki
                                 case TrayCommand.Settings: Open(anchor, true); break;
                                 case TrayCommand.Exit: app.Shutdown(); break;
                             }
-                        });
+                        }, settings.English);
                         menu = popup;
                         popup.Closed += delegate { if (menu == popup) menu = null; };
                         popup.Open(tray.MenuAnchor);
@@ -112,8 +118,8 @@ namespace Sutki
             {
                 bool startup = false;
                 try { startup = Store.StartupEnabled(); }
-                catch (Exception error) { SetState("Автозапуск: " + error.Message, true); }
-                panel = new Panel(settings, startup, Save, Store.SetStartup);
+                catch (Exception error) { SetState(new LocalizedText("Автозапуск: ", "Startup: ").WithError(error), true); }
+                panel = new Panel(settings, startup, Save, Store.SetStartup, SetLanguage);
             }
             panel.Refresh(Schedule.At(settings.Starts, DateTime.Now));
             panel.Report(state, stateError);
@@ -129,6 +135,20 @@ namespace Sutki
             Update(true);
         }
 
+        private void SetLanguage(bool english)
+        {
+            Settings value = settings.WithLanguage(english);
+            store.Save(value);
+            settings = value;
+            RefreshTrayText(Schedule.At(settings.Starts, DateTime.Now).Dark);
+        }
+
+        private void RefreshTrayText(bool dark)
+        {
+            bool english = settings.English;
+            tray.Tooltip(LocalizedText.AppName.In(english) + " · " + LocalizedText.Wallpaper(dark).In(english));
+        }
+
         private async void Update(bool force)
         {
             DateTime now = DateTime.Now;
@@ -138,7 +158,7 @@ namespace Sutki
             {
                 retryAt = DateTime.MinValue;
                 shownDark = schedule.Dark;
-                tray.Tooltip(schedule.Dark ? "Сутки · Тёмные обои" : "Сутки · Светлые обои");
+                RefreshTrayText(schedule.Dark);
             }
             if (panel != null && panel.IsVisible) panel.Refresh(schedule);
 
@@ -149,23 +169,25 @@ namespace Sutki
             if (String.IsNullOrWhiteSpace(source))
             {
                 Remember(snapshot, schedule, source);
-                SetState("Выберите " + (schedule.Dark ? "тёмные" : "светлые") + " обои для текущего периода.", false);
+                SetState(schedule.Dark
+                    ? new LocalizedText("Выберите тёмные обои.", "Choose a dark wallpaper.")
+                    : new LocalizedText("Выберите светлые обои.", "Choose a light wallpaper."), false);
                 return;
             }
 
             busy = true;
-            SetState("Применяем обои…", false);
+            SetState(new LocalizedText("Применяем обои…", "Applying wallpaper…"), false);
             try
             {
                 bool keepCurrent = !appliedPeriod.HasValue || alreadyApplied;
                 string path = await Task.Run(() => wallpaper.Apply(snapshot, schedule.Dark, keepCurrent));
                 Remember(snapshot, schedule, source);
-                SetState("Обои · " + Path.GetFileName(path), false);
+                SetState(new LocalizedText("Обои · " + Path.GetFileName(path), "Wallpaper · " + Path.GetFileName(path)), false);
             }
             catch (Exception error)
             {
                 retryAt = DateTime.Now.AddSeconds(30);
-                SetState("Не удалось сменить обои: " + error.Message, true);
+                SetState(new LocalizedText("Не удалось сменить обои: ", "Could not change wallpaper: ").WithError(error), true);
             }
             finally
             {
@@ -182,7 +204,7 @@ namespace Sutki
             retryAt = DateTime.MinValue;
         }
 
-        private void SetState(string message, bool error)
+        private void SetState(LocalizedText message, bool error)
         {
             state = message;
             stateError = error;

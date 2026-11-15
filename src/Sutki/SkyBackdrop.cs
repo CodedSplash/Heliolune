@@ -43,13 +43,14 @@ namespace Sutki
         private static readonly ImageSource MidCloudLit = Cloud(4.2, true, true);
         private static readonly ImageSource LowCloudLit = Cloud(2.7, true, true);
         private static readonly ImageSource NightStarDust = CreateStarDust();
-        private static readonly Brush Daylight = Tint(0.50, 0.50, 0xDD, 0xBA, 0x94, 83);
-        private static readonly Brush DayAir = Tint(0.55, 0.48, 0x79, 0xA0, 0xBE, 52);
+        private static readonly Brush Daylight = Tint(0.50, 0.50, 0xF8, 0xD4, 0xA6, 146);
+        private static readonly Brush SunScattering = Tint(0.50, 0.50, 0xFF, 0xE8, 0xC2, 102);
+        private static readonly Brush DayAir = Tint(0.55, 0.48, 0x81, 0xAE, 0xD1, 121);
         private static readonly Pen BirdInk = CreateBirdPen();
         private static readonly Geometry[] Wings = CreateWings();
         private static readonly Point[] Formation =
         {
-            new Point(0, 0), new Point(-12, 4), new Point(-21, -3), new Point(-29, 8)
+            new Point(0, 0), new Point(-14, 6), new Point(-25, -3), new Point(-38, 10)
         };
         private static readonly Brush NightAir = Tint(0.60, 0.50, 0x63, 0x88, 0xB2, 24);
         private static readonly Brush Star = Tint(0.50, 0.50, 0xBB, 0xCA, 0xE7, 190);
@@ -70,24 +71,30 @@ namespace Sutki
         {
             if (width <= 0 || height <= 0) return;
             double wave = phase * 2 * Math.PI;
-            dc.PushTransform(new ScaleTransform(width / 288, height / 138));
-            dc.PushClip(new RectangleGeometry(new Rect(0, 0, 288, 138), 17, 17));
             if (moon < 1)
             {
                 dc.PushOpacity(1 - moon);
+                // The main viewport reveals the bottom 140 DIPs of the shared, fixed-height background.
+                // Anchor the daylight scene there and keep its size independent of the screen transition.
+                dc.PushTransform(new MatrixTransform(width / 288, 0, 0, 1, 0, height - 166));
                 double angle = Math.PI * sunPosition;
-                var sun = new Point(144 - 107 * Math.Cos(angle), 106 - 69 * Math.Sin(angle));
-                dc.DrawEllipse(DayAir, null, new Point(222, 14), 166, 92);
-                dc.DrawEllipse(Daylight, null, new Point(sun.X, sun.Y - 23), 128, 93);
-                DrawCloud(dc, HighCloud, HighCloudLit, sun, phase, 0.17, 4, 201, 51, 0.78);
-                DrawCloud(dc, MidCloud, MidCloudLit, sun, phase, 0.62, 42, 193, 61, 0.84);
-                DrawCloud(dc, LowCloud, LowCloudLit, sun, phase, 0.40, 80, 238, 66, 0.93);
+                double radius = Math.Max(5, (width - 74) / 2) * 288 / width;
+                var sun = new Point(144 - radius * Math.Cos(angle), 134 - 69 * Math.Sin(angle));
+                dc.DrawEllipse(DayAir, null, new Point(177, 38), 209, 128);
+                dc.DrawEllipse(Daylight, null, new Point(sun.X, sun.Y - 5), 177, 113);
+                dc.DrawEllipse(SunScattering, null, sun, 78, 69);
+                DrawCloud(dc, HighCloud, HighCloudLit, sun, phase, 0.17, 30, 201, 48, 0.78);
+                DrawCloud(dc, MidCloud, MidCloudLit, sun, phase, 0.62, 65, 193, 60, 0.86);
+                DrawCloud(dc, LowCloud, LowCloudLit, sun, phase, 0.40, 109, 238, 58, 0.93);
                 DrawFlock(dc, phase);
+                dc.Pop();
                 dc.Pop();
             }
             if (moon > 0)
             {
                 dc.PushOpacity(moon);
+                dc.PushTransform(new ScaleTransform(width / 288, height / 138));
+                dc.PushClip(new RectangleGeometry(new Rect(0, 0, 288, 138), 17, 17));
                 dc.DrawEllipse(NightAir, null, new Point(150 + 26 * Math.Cos(wave), 73), 171, 85);
                 dc.PushOpacity(0.81 + 0.12 * Math.Sin(wave - 0.6));
                 dc.DrawImage(NightStarDust, new Rect(-12 + 7 * Math.Sin(wave), -8 + 3 * Math.Cos(wave), 312, 154));
@@ -103,9 +110,9 @@ namespace Sutki
                 DrawMeteor(dc, phase, 0.31, new Point(181, 13), new Vector(99, 38), 1);
                 DrawMeteor(dc, phase, 0.76, new Point(208, 12), new Vector(67, 26), 0.64);
                 dc.Pop();
+                dc.Pop();
+                dc.Pop();
             }
-            dc.Pop();
-            dc.Pop();
         }
 
         private static void DrawCloud(DrawingContext dc, ImageSource texture, ImageSource lit, Point sun, double phase, double offset,
@@ -184,14 +191,16 @@ namespace Sutki
 
         private static void DrawFlock(DrawingContext dc, double phase)
         {
-            double progress = phase - Math.Floor(phase);
-            const double flightEnd = 0.68;
+            // Start the flock in view at the panel's initial phase, then let it leave naturally.
+            double progress = phase + 0.08;
+            progress -= Math.Floor(progress);
+            const double flightEnd = 0.75;
             if (progress >= flightEnd) return;
             double travel = progress / flightEnd;
             double envelope = Math.Min(1, Math.Min(travel, 1 - travel) * 6);
             double x = 15 + 263 * travel;
-            double y = 31 - 13 * Math.Sin(travel * Math.PI) + 2.5 * Math.Sin(travel * 11);
-            dc.PushOpacity(envelope * 0.67);
+            double y = 62 - 13 * Math.Sin(travel * Math.PI) + 3 * Math.Sin(travel * 11);
+            dc.PushOpacity(envelope * 0.83);
             for (int i = 0; i < Formation.Length; i++)
             {
                 Point offset = Formation[i];
@@ -202,8 +211,11 @@ namespace Sutki
                 int frame = (int)Math.Round((tilt + 1) * (Wings.Length - 1) / 2);
                 dc.PushTransform(new TranslateTransform(x + offset.X + 2.5 * Math.Sin(travel * 13 + i),
                     y + offset.Y + 1.6 * Math.Sin(travel * 17 + i)));
-                dc.PushTransform(new RotateTransform(7 * Math.Cos(travel * 5 + i * 0.27)));
+                var bank = new RotateTransform(9 * Math.Cos(travel * 5 + i * 0.27));
+                dc.PushTransform(bank);
+                dc.PushTransform(new ScaleTransform(1.27 - i * 0.09, 1.33 - i * 0.10));
                 dc.DrawGeometry(null, BirdInk, Wings[frame]);
+                dc.Pop();
                 dc.Pop();
                 dc.Pop();
             }
@@ -231,7 +243,7 @@ namespace Sutki
 
         private static Pen CreateBirdPen()
         {
-            return MakePen(FrozenBrush(Color.FromRgb(62, 77, 100)), 1.05);
+            return MakePen(FrozenBrush(Color.FromRgb(49, 65, 85)), 1.15);
         }
 
         private static Brush FrozenBrush(Color color)

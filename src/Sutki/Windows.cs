@@ -123,7 +123,7 @@ namespace Sutki
         public event Action ClockChanged;
         internal bool Registered { get; private set; }
 
-        public Tray()
+        public Tray(bool english)
         {
             window = new HwndSource(new HwndSourceParameters("Sutki.Tray")
             {
@@ -135,7 +135,7 @@ namespace Sutki
             using (var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("Sutki.ico"))
                 icon = new Icon(stream, 32, 32);
             data = new Notify { Size = Marshal.SizeOf(typeof(Notify)), Window = window.Handle, Id = 1,
-                Flags = 0x87, Message = Callback, Icon = icon.Handle, Tip = "Сутки" };
+                Flags = 0x87, Message = Callback, Icon = icon.Handle, Tip = LocalizedText.AppName.In(english) };
             Register();
         }
 

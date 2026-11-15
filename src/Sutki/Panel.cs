@@ -24,6 +24,11 @@ namespace Sutki
         private readonly SkyDial dial = new SkyDial { IsHitTestVisible = false };
         private readonly Grid glance = new Grid { Height = 138 };
         private readonly TextBox[] times = new TextBox[2];
+        private readonly TextBlock[] periodLabels = new TextBlock[2];
+        private readonly MenuItem[] clearSources = new MenuItem[2];
+        private readonly TextBlock settingsTitle, wallpaperTitle, languageLabel;
+        private readonly AnimatedSwitch startupToggle;
+        private readonly Button russianButton, englishButton;
         private readonly Button[] sources = new Button[2];
         private readonly string[] paths = new string[4];
         private readonly TextBlock status;
@@ -35,6 +40,8 @@ namespace Sutki
         private readonly TranslateTransform slide = new TranslateTransform();
         private readonly Action<Settings> save;
         private readonly Action<bool> setStartup;
+        private readonly Action<bool> setLanguage;
+        private bool english;
         private bool folderMode, picking, startup, unsaved, editing, dragging;
         private bool dragArmed;
         private Drawing.Point dragPointer, dragOrigin;
@@ -43,13 +50,15 @@ namespace Sutki
         private Drawing.Rectangle anchor;
         private Drawing.Point? draggedBottom;
         private Schedule schedule;
-        private string reported = "";
-        private bool reportedError;
+        private LocalizedText reported, displayedStatus;
+        private bool reportedError, displayedError;
 
-        public Panel(Settings settings, bool startup, Action<Settings> save, Action<bool> setStartup)
+        public Panel(Settings settings, bool startup, Action<Settings> save, Action<bool> setStartup, Action<bool> setLanguage)
         {
             this.save = save;
             this.setStartup = setStartup;
+            this.setLanguage = setLanguage;
+            english = settings.English;
             this.startup = startup;
             Width = PanelWidth;
             Height = HostHeight;
@@ -60,7 +69,6 @@ namespace Sutki
             WindowStartupLocation = WindowStartupLocation.Manual;
             ShowInTaskbar = false;
             Topmost = true;
-            Title = "Сутки";
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             FontSize = 13;
             UseLayoutRounding = true;
@@ -69,7 +77,7 @@ namespace Sutki
 
             glance.Children.Add(dial);
             glance.Cursor = Cursors.SizeAll;
-            settingsButton = IconButton("\uE713", "Настройки", () => View(true));
+            settingsButton = IconButton("\uE713", () => View(true));
             settingsButton.HorizontalAlignment = HorizontalAlignment.Center;
             settingsButton.VerticalAlignment = VerticalAlignment.Bottom;
             settingsButton.Margin = new Thickness(0, 0, 0, 5);
@@ -77,12 +85,12 @@ namespace Sutki
             glance.Children.Add(settingsButton);
 
             var header = Row(1, 0, 0);
-            var title = Label("Настройки", 17, "Text", true);
-            title.VerticalAlignment = VerticalAlignment.Center;
-            Put(header, title, 0);
-            saveButton = IconButton("\uE73E", "Сохранить и применить", Save);
+            settingsTitle = Label("", 17, "Text", true);
+            settingsTitle.VerticalAlignment = VerticalAlignment.Center;
+            Put(header, settingsTitle, 0);
+            saveButton = IconButton("\uE73E", Save);
             Put(header, saveButton, 1);
-            backButton = IconButton("\uE72B", "Открыть шкалу", () => View(false));
+            backButton = IconButton("\uE72B", () => View(false));
             Put(header, backButton, 2);
             preferences.Children.Add(header);
 
@@ -90,17 +98,15 @@ namespace Sutki
             timeRow.Margin = new Thickness(0, 7, 0, 0);
             for (int i = 0; i < times.Length; i++)
             {
-                string phase = i == 0 ? "Утро" : "Вечер";
                 var field = Row(1, 0);
-                var label = Label(phase, 12, "Text", false);
+                var label = Label("", 12, "Text", false);
+                periodLabels[i] = label;
                 label.Margin = new Thickness(9, 0, 0, 0);
                 label.VerticalAlignment = VerticalAlignment.Center;
                 Put(field, label, 0);
                 var input = new TextBox { Style = (Style)Resources["Time"], MaxLength = 5,
                     Text = Schedule.Format(settings.Starts[i]), Width = 56 };
                 times[i] = input;
-                AutomationProperties.SetName(input, phase);
-                input.ToolTip = "ЧЧ:ММ · ↑ / ↓ 15 минут · Shift 1 минута";
                 input.GotKeyboardFocus += delegate { input.SelectAll(); };
                 input.TextChanged += delegate { MarkDirty(); };
                 input.PreviewKeyDown += (sender, args) =>
@@ -124,11 +130,11 @@ namespace Sutki
 
             var wallpaperHeader = Row(1, 0);
             wallpaperHeader.Margin = new Thickness(0, 8, 0, 0);
-            var wallpaperTitle = Label("Обои", 13, "Text", true);
+            wallpaperTitle = Label("", 13, "Text", true);
             wallpaperTitle.VerticalAlignment = VerticalAlignment.Center;
             Put(wallpaperHeader, wallpaperTitle, 0);
-            files = IconButton("\uEB9F", "Два файла", () => SetMode(false));
-            folders = IconButton("\uE8B7", "Две папки", () => SetMode(true));
+            files = IconButton("\uEB9F", () => SetMode(false));
+            folders = IconButton("\uE8B7", () => SetMode(true));
             var modes = Row(1, 1);
             modes.Width = 60;
             var selection = new Border { Margin = new Thickness(1), CornerRadius = new CornerRadius(9),
@@ -141,9 +147,8 @@ namespace Sutki
             preferences.Children.Add(wallpaperHeader);
             for (int i = 0; i < sources.Length; i++) AddSource(i);
 
-            var startupToggle = new AnimatedSwitch { Style = (Style)Resources["Switch"], Content = "Автозапуск",
+            startupToggle = new AnimatedSwitch { Style = (Style)Resources["Switch"],
                 IsChecked = startup, Margin = new Thickness(0, 9, 0, 0) };
-            startupToggle.ToolTip = "Запускать при входе в Windows";
             startupToggle.Click += delegate
             {
                 try
@@ -155,10 +160,21 @@ namespace Sutki
                 catch (Exception error)
                 {
                     startupToggle.IsChecked = this.startup;
-                    ShowStatus("Автозапуск: " + error.Message, true);
+                    ShowStatus(new LocalizedText("Автозапуск: ", "Startup: ").WithError(error), true);
                 }
             };
             preferences.Children.Add(startupToggle);
+
+            var languages = Row(1, 0, 0);
+            languages.Margin = new Thickness(0, 5, 0, 0);
+            languageLabel = Label("", 13, "Text", false);
+            languageLabel.VerticalAlignment = VerticalAlignment.Center;
+            Put(languages, languageLabel, 0);
+            russianButton = LanguageButton("Русский", false);
+            englishButton = LanguageButton("English", true);
+            Put(languages, russianButton, 1);
+            Put(languages, englishButton, 2);
+            preferences.Children.Add(languages);
 
             status = Label("", 11, "Muted", false);
             status.TextWrapping = TextWrapping.Wrap;
@@ -187,8 +203,7 @@ namespace Sutki
             paths[2] = settings.LightFolder ?? "";
             paths[3] = settings.DarkFolder ?? "";
             folderMode = settings.Folders;
-            UpdateModeSelection(false);
-            UpdateSources();
+            ApplyLanguage();
             UpdateSaveButton();
             scroll.Visibility = Visibility.Collapsed;
             glance.Opacity = 1;
@@ -226,7 +241,8 @@ namespace Sutki
             var button = new AnimatedButton { Style = (Style)Resources["Source"], Margin = new Thickness(0, 3, 0, 0) };
             button.Click += delegate { Browse(index); };
             button.ContextMenu = new ContextMenu();
-            var clear = new MenuItem { Header = "Очистить" };
+            var clear = new MenuItem();
+            clearSources[index] = clear;
             clear.Click += delegate
             {
                 paths[Slot(index)] = "";
@@ -250,11 +266,11 @@ namespace Sutki
             {
                 string selected;
                 if (folderMode)
-                    selected = FolderPicker.Pick(new WindowInteropHelper(this).Handle, paths[slot], "Выберите папку с обоями");
+                    selected = FolderPicker.Pick(new WindowInteropHelper(this).Handle, paths[slot], Tr("Выберите папку с обоями", "Choose a wallpaper folder"));
                 else
                 {
-                    var picker = new Microsoft.Win32.OpenFileDialog { Title = "Выберите обои",
-                        Filter = Wallpaper.Filter, CheckFileExists = true };
+                    var picker = new Microsoft.Win32.OpenFileDialog { Title = Tr("Выберите обои", "Choose a wallpaper"),
+                        Filter = Tr("Изображения", "Images") + " (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp", CheckFileExists = true };
                     if (File.Exists(paths[slot])) picker.InitialDirectory = Path.GetDirectoryName(paths[slot]);
                     selected = picker.ShowDialog(this) == true ? picker.FileName : null;
                 }
@@ -265,7 +281,7 @@ namespace Sutki
                     MarkDirty();
                 }
             }
-            catch (Exception error) { ShowStatus(error.Message, true); }
+            catch (Exception error) { ShowStatus(default(LocalizedText).WithError(error), true); }
             finally { Activate(); picking = false; }
         }
 
@@ -292,8 +308,9 @@ namespace Sutki
             ControlMotion.To(modePosition, TranslateTransform.XProperty, folderMode ? 30 : 0, 220, animate);
             files.SetResourceReference(Control.ForegroundProperty, folderMode ? "Text" : "AccentText");
             folders.SetResourceReference(Control.ForegroundProperty, folderMode ? "AccentText" : "Text");
-            AutomationProperties.SetItemStatus(files, folderMode ? "" : "Выбрано");
-            AutomationProperties.SetItemStatus(folders, folderMode ? "Выбрано" : "");
+            string selected = Tr("Выбрано", "Selected");
+            AutomationProperties.SetItemStatus(files, folderMode ? "" : selected);
+            AutomationProperties.SetItemStatus(folders, folderMode ? selected : "");
         }
 
         private void UpdateSources()
@@ -301,8 +318,8 @@ namespace Sutki
             for (int i = 0; i < sources.Length; i++)
             {
                 string path = paths[Slot(i)];
-                string title = i == 0 ? "Светлые" : "Тёмные";
-                string name = path.Length == 0 ? "Выбрать" : Path.GetFileName(path.TrimEnd('\\', '/'));
+                string title = i == 0 ? Tr("Светлые", "Day") : Tr("Тёмные", "Night");
+                string name = path.Length == 0 ? Tr("Выбрать", "Choose") : Path.GetFileName(path.TrimEnd('\\', '/'));
                 if (String.IsNullOrEmpty(name)) name = path;
                 var info = Row(0, 1, 0);
                 var kind = Label(title, 12, "Text", true);
@@ -317,8 +334,9 @@ namespace Sutki
                 arrow.Margin = new Thickness(6, 0, 0, 0);
                 Put(info, arrow, 2);
                 sources[i].Content = info;
-                sources[i].ToolTip = path.Length == 0 ? title + " обои" : path;
-                AutomationProperties.SetName(sources[i], title + " обои · " + name);
+                string wallpaper = LocalizedText.Wallpaper(i != 0).In(english);
+                sources[i].ToolTip = path.Length == 0 ? wallpaper : path;
+                AutomationProperties.SetName(sources[i], wallpaper + " · " + name);
             }
         }
 
@@ -326,7 +344,7 @@ namespace Sutki
         {
             unsaved = true;
             UpdateSaveButton();
-            ShowStatus("", false);
+            ShowStatus(default(LocalizedText), false);
         }
 
         private void UpdateSaveButton()
@@ -335,16 +353,19 @@ namespace Sutki
             SetSelected(saveButton, unsaved);
         }
 
-        public void Report(string message, bool error)
+        public void Report(LocalizedText message, bool error)
         {
             reported = message;
             reportedError = error;
             UpdateSaveButton();
-            if (!unsaved) ShowStatus(error ? message : "", error);
+            if (!unsaved) ShowStatus(error ? message : default(LocalizedText), error);
         }
 
-        private void ShowStatus(string message, bool error)
+        private void ShowStatus(LocalizedText text, bool error)
         {
+            displayedStatus = text;
+            displayedError = error;
+            string message = text.In(english);
             status.Text = message;
             status.Visibility = String.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
             status.SetResourceReference(TextBlock.ForegroundProperty, error ? "Error" : "Muted");
@@ -358,28 +379,28 @@ namespace Sutki
             for (int i = 0; i < starts.Length; i++)
             {
                 if (Schedule.Parse(times[i].Text, out starts[i])) continue;
-                ShowStatus("Укажите время в формате ЧЧ:ММ.", true);
+                ShowStatus(new LocalizedText("Укажите время в формате ЧЧ:ММ.", "Enter the time in HH:MM format."), true);
                 times[i].Focus();
                 return;
             }
             if (!Schedule.Valid(starts))
             {
-                ShowStatus("Время утра и вечера должно различаться.", true);
+                ShowStatus(new LocalizedText("Время утра и вечера должно различаться.", "Morning and evening times must differ."), true);
                 return;
             }
 
             var settings = new Settings { Starts = starts, Folders = folderMode, LightFile = paths[0],
-                DarkFile = paths[1], LightFolder = paths[2], DarkFolder = paths[3] };
+                DarkFile = paths[1], LightFolder = paths[2], DarkFolder = paths[3], English = english };
             try
             {
                 save(settings);
                 for (int i = 0; i < starts.Length; i++) times[i].Text = Schedule.Format(starts[i]);
                 unsaved = false;
                 UpdateSaveButton();
-                ShowStatus(reportedError ? reported : "", reportedError);
+                ShowStatus(reportedError ? reported : default(LocalizedText), reportedError);
                 View(false);
             }
-            catch (Exception error) { ShowStatus(error.Message, true); }
+            catch (Exception error) { ShowStatus(default(LocalizedText).WithError(error), true); }
         }
 
         public void Refresh(Schedule current)
@@ -392,13 +413,77 @@ namespace Sutki
                 darkTheme = current.Dark;
                 ApplyTheme();
             }
-            if (nextChanged)
+            if (nextChanged) UpdateScheduleHint();
+        }
+
+        private void UpdateScheduleHint()
+        {
+            if (schedule == null) return;
+            string next = (schedule.Dark ? LocalizedText.Morning : LocalizedText.Evening).In(english);
+            string hint = LocalizedText.Wallpaper(schedule.Dark).In(english) + " · "
+                + next + Tr(" в ", " at ") + schedule.Next.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            SetHint(glance, hint);
+        }
+
+        private void ApplyLanguage()
+        {
+            Language = System.Windows.Markup.XmlLanguage.GetLanguage(english ? "en" : "ru");
+            Title = LocalizedText.AppName.In(english);
+            settingsTitle.Text = LocalizedText.Settings.In(english);
+            SetHint(settingsButton, settingsTitle.Text);
+            SetHint(backButton, LocalizedText.OpenDial.In(english));
+            SetHint(saveButton, Tr("Сохранить и применить", "Save and apply"));
+            wallpaperTitle.Text = Tr("Обои", "Wallpaper");
+            SetHint(files, Tr("Два файла", "Two files"));
+            SetHint(folders, Tr("Две папки", "Two folders"));
+            startupToggle.Content = LocalizedText.Startup.In(english);
+            SetHint(startupToggle, Tr("Запускать при входе в Windows", "Start when signing in to Windows"));
+            languageLabel.Text = Tr("Язык", "Language");
+            SetSelected(russianButton, !english);
+            SetSelected(englishButton, english);
+            string selected = Tr("Выбрано", "Selected");
+            AutomationProperties.SetItemStatus(russianButton, english ? "" : selected);
+            AutomationProperties.SetItemStatus(englishButton, english ? selected : "");
+            for (int i = 0; i < times.Length; i++)
             {
-                string hint = (current.Dark ? "Тёмные обои" : "Светлые обои") + " · "
-                    + current.NextName + " в " + current.Next.ToString("HH:mm");
-                glance.ToolTip = hint;
-                AutomationProperties.SetName(glance, hint);
+                string period = (i == 0 ? LocalizedText.Morning : LocalizedText.Evening).In(english);
+                periodLabels[i].Text = period;
+                AutomationProperties.SetName(times[i], period);
+                times[i].ToolTip = Tr("ЧЧ:ММ · ↑ / ↓ 15 минут · Shift 1 минута", "HH:MM · ↑ / ↓ 15 minutes · Shift 1 minute");
+                clearSources[i].Header = Tr("Очистить", "Clear");
             }
+            UpdateSources();
+            UpdateModeSelection(false);
+            UpdateScheduleHint();
+            ShowStatus(displayedStatus, displayedError);
+        }
+
+        private Button LanguageButton(string label, bool useEnglish)
+        {
+            var button = new AnimatedButton { Style = (Style)Resources["QuietButton"], Content = label,
+                Height = 26, Width = 65, Margin = new Thickness(3, 0, 0, 0),
+                HorizontalContentAlignment = HorizontalAlignment.Center };
+            button.Click += delegate
+            {
+                if (english == useEnglish) return;
+                try { setLanguage(useEnglish); }
+                catch (Exception error)
+                {
+                    ShowStatus(new LocalizedText("Не удалось сохранить язык: ", "Could not save the language: ").WithError(error), true);
+                    return;
+                }
+                english = useEnglish;
+                ApplyLanguage();
+            };
+            return button;
+        }
+
+        private string Tr(string russian, string translation) { return english ? translation : russian; }
+
+        private static void SetHint(FrameworkElement element, string text)
+        {
+            element.ToolTip = text;
+            AutomationProperties.SetName(element, text);
         }
 
         private void ApplyTheme()
@@ -407,10 +492,10 @@ namespace Sutki
             string[] keys = { "Card", "Text", "Muted", "Accent", "AccentText", "Error", "Line" };
             string[] colors = dark
                 ? new[] { "#282D37", "#EDF0F6", "#A9B4C7", "#2E4461", "#D7E8FF", "#FFB6C1", "#363E4C" }
-                : new[] { "#A4ADBA", "#202939", "#343E50", "#879DBA", "#1D2A40", "#681D34", "#8792A2" };
+                : new[] { "#AFBBC9", "#202939", "#344254", "#96AEC8", "#1D2A40", "#681D34", "#95A3B4" };
             for (int i = 0; i < keys.Length; i++) Resources[keys[i]] = Brush(colors[i]);
 
-            var target = Brush(dark ? "#1C212B" : "#B2B8C2");
+            var target = Brush(dark ? "#1C212B" : "#C4CDD7");
             // Animate the tint independently of the controls.
             var old = surface.Background as SolidColorBrush;
             surface.Background = target;
@@ -603,10 +688,9 @@ namespace Sutki
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr w, IntPtr after, int x, int y, int width, int height, uint flags);
 
-        private Button IconButton(string glyph, string hint, Action click)
+        private Button IconButton(string glyph, Action click)
         {
-            var button = new AnimatedButton { Style = (Style)Resources["Icon"], Content = glyph, ToolTip = hint };
-            AutomationProperties.SetName(button, hint);
+            var button = new AnimatedButton { Style = (Style)Resources["Icon"], Content = glyph };
             button.Click += delegate { click(); };
             return button;
         }

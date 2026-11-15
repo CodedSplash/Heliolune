@@ -12,7 +12,15 @@ namespace Sutki
     {
         public int[] Starts = { 420, 1080 };
         public bool Folders;
+        public bool English;
         public string LightFile = "", DarkFile = "", LightFolder = "", DarkFolder = "";
+
+        internal Settings WithLanguage(bool english)
+        {
+            var copy = (Settings)MemberwiseClone();
+            copy.English = english;
+            return copy;
+        }
 
         public string Source(bool dark)
         {
@@ -28,7 +36,6 @@ namespace Sutki
         public double Progress;
         public double EveningMark;
         public double NightProgress;
-        public string NextName { get { return Dark ? "Утро" : "Вечер"; } }
 
         public static bool Valid(int[] starts)
         {
@@ -91,7 +98,7 @@ namespace Sutki
                 Settings settings = (Settings)serializer.Deserialize(stream);
                 if (settings.Starts != null && settings.Starts.Length == 4)
                     settings.Starts = new[] { settings.Starts[0], settings.Starts[2] };
-                if (!Schedule.Valid(settings.Starts)) throw new InvalidDataException("Проверьте расписание.");
+                if (!Schedule.Valid(settings.Starts)) throw new LocalizedException("Проверьте расписание.", "Check the schedule.");
                 return settings;
             }
         }
@@ -118,7 +125,8 @@ namespace Sutki
         public static void SetStartup(bool enabled)
         {
             string command = "\"" + System.Reflection.Assembly.GetExecutingAssembly().Location + "\" --startup";
-            if (enabled && command.Length > 260) throw new IOException("Переместите приложение в папку с более коротким путём.");
+            if (enabled && command.Length > 260) throw new LocalizedException("Переместите приложение в папку с более коротким путём.",
+                "Move the application to a folder with a shorter path.");
             using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunPath))
             {
                 if (enabled) key.SetValue(RunName, command);
@@ -135,7 +143,6 @@ namespace Sutki
 
     internal sealed class Wallpaper
     {
-        public const string Filter = "Изображения (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp";
         private readonly IDesktop desktop;
         private readonly Random random = new Random();
         private string previousLight, previousDark;
@@ -156,13 +163,13 @@ namespace Sutki
             string current = desktop.Current();
             if (!settings.Folders)
             {
-                if (!File.Exists(source)) throw new IOException("Файл обоев недоступен.");
+                if (!File.Exists(source)) throw new LocalizedException("Файл обоев недоступен.", "The wallpaper file is unavailable.");
                 if (!Same(current, source)) desktop.Set(source);
                 return source;
             }
 
             List<string> candidates = Directory.EnumerateFiles(source).Where(Supported).ToList();
-            if (candidates.Count == 0) throw new IOException("В папке нет JPG, PNG или BMP.");
+            if (candidates.Count == 0) throw new LocalizedException("В папке нет JPG, PNG или BMP.", "The folder contains no JPG, PNG, or BMP images.");
             string chosen = candidates.FirstOrDefault(file => keepCurrent && Same(file, current));
             if (chosen == null)
             {
@@ -170,7 +177,8 @@ namespace Sutki
                 List<string> preferred = candidates.Where(p => !Same(p, previous) && !Same(p, current)).ToList();
                 List<string> remaining = candidates.Except(preferred).ToList();
                 chosen = TryCandidates(preferred, current) ?? TryCandidates(remaining, current);
-                if (chosen == null) throw new IOException("Windows не удалось установить изображения из папки.");
+                if (chosen == null) throw new LocalizedException("Windows не удалось установить изображения из папки.",
+                    "Windows could not apply any image from the folder.");
             }
             if (dark) previousDark = chosen;
             else previousLight = chosen;

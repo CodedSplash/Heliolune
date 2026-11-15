@@ -17,7 +17,7 @@ namespace Sutki
         private readonly Border surface;
         private bool choosing;
 
-        public TrayMenu(bool dark, Action<TrayCommand> choose)
+        public TrayMenu(bool dark, Action<TrayCommand> choose, bool english)
         {
             Width = 223;
             SizeToContent = SizeToContent.Height;
@@ -28,7 +28,8 @@ namespace Sutki
             WindowStartupLocation = WindowStartupLocation.Manual;
             ShowInTaskbar = false;
             Topmost = true;
-            Title = "Меню «Суток»";
+            Language = XmlLanguage.GetLanguage(english ? "en" : "ru");
+            Title = english ? "Heliolune menu" : "Меню «Суток»";
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             FontSize = 13;
             UseLayoutRounding = true;
@@ -36,13 +37,14 @@ namespace Sutki
                 Resources = (ResourceDictionary)XamlReader.Load(stream);
             Resources["Text"] = Brush(dark ? "#EDF0F6" : "#202939");
             Resources["Muted"] = Brush(dark ? "#A9B4C7" : "#343E50");
-            Resources["Accent"] = Brush(dark ? "#2E4461" : "#879DBA");
+            Resources["Accent"] = Brush(dark ? "#2E4461" : "#96AEC8");
 
             var items = new StackPanel();
-            string[] labels = { "Открыть шкалу", "Настройки", "Закрыть приложение" };
+            string[] labels = { LocalizedText.OpenDial.In(english), LocalizedText.Settings.In(english),
+                english ? "Exit application" : "Закрыть приложение" };
             string[] glyphs = { "\uE121", "\uE713", "\uE8BB" };
             TrayCommand[] commands = { TrayCommand.Glance, TrayCommand.Settings, TrayCommand.Exit };
-            Brush line = Brush(dark ? "#363E4C" : "#8792A2");
+            Brush line = Brush(dark ? "#363E4C" : "#95A3B4");
             for (int i = 0; i < actions.Length; i++)
             {
                 if (i == 2) items.Children.Add(new Border { Height = 1, Background = line, Margin = new Thickness(6, 3, 6, 3) });
@@ -64,7 +66,7 @@ namespace Sutki
                 items.Children.Add(button);
             }
             surface = new Border { Child = items, Padding = new Thickness(5), CornerRadius = new CornerRadius(14),
-                BorderThickness = new Thickness(1), BorderBrush = line, Background = Brush(dark ? "#1C212B" : "#B2B8C2") };
+                BorderThickness = new Thickness(1), BorderBrush = line, Background = Brush(dark ? "#1C212B" : "#C4CDD7") };
             Content = surface;
             PreviewKeyDown += Navigate;
             Deactivated += delegate { if (!choosing && IsVisible) Close(); };
